@@ -6,42 +6,18 @@ from datetime import datetime
 class KathodenmaschinenSimulator:
     def __init__(self):
         self.server = Server()
-        self.sheet_counter = 1000000
+        self.sheet_counter = 1000000  # 7-stellige Sheet ID
         
-    def generiere_datensatz(self):
-        self.sheet_counter += 1
-        return f"{self.sheet_counter}|" + \
-               f"{random.randint(100,999)}|" + \
-               f"{random.randint(100,999)}|" + \
-               f"{random.randint(1,3)}|" + \
-               f"{random.randint(0,1)}|" + \
-               f"{random.randint(0,4)}|" + \
-               f"{random.randint(10,99)}|" + \
-               f"{random.randint(10,99)}|" + \
-               f"{random.randint(1,63)}|" + \
-               f"{random.randint(100,900)}|" + \
-               f"{random.randint(0,1)}|" + \
-               f"{random.randint(0,500)}|" + \
-               f"{random.randint(0,500)}|" + \
-               f"{random.randint(0,4)}|" + \
-               f"{random.randint(0,4)}|" + \
-               f"{random.randint(0,4)}|" + \
-               f"{random.randint(0,4)}|" + \
-               f"{random.randint(100,999)}|" + \
-               f"{random.randint(0,800)}|" + \
-               f"{random.randint(0,800)}|" + \
-               f"{random.randint(0,800)}|" + \
-               f"{random.randint(0,800)}|" + \
-               f"{random.randint(0,500)}|" + \
-               f"{random.randint(100,999)}|" + \
-               f"{random.randint(0,1)}"
-
     async def init(self):
         await self.server.init()
         
         # Server-Einstellungen
         self.server.set_endpoint("opc.tcp://localhost:4840/freeopcua/server/")
         self.server.set_server_name("Kathodenmaschinen-Simulator")
+        
+        # Session-Einstellungen
+        self.server.set_security_policy([ua.SecurityPolicyType.NoSecurity])
+        self.server._session_timeout = 60000  # 60 Sekunden Session-Timeout
         
         # Namespace erstellen
         uri = "http://kathodenmaschine.simulation"
@@ -66,8 +42,43 @@ class KathodenmaschinenSimulator:
 
     async def cleanup(self):
         if hasattr(self, 'server'):
-            await self.server.stop()
-            print(f"[{datetime.now()}] Server gestoppt")
+            try:
+                await self.server.stop()
+                print(f"[{datetime.now()}] Server gestoppt")
+            except Exception as e:
+                print(f"Fehler beim Stoppen des Servers: {e}")
+
+    def generiere_datensatz(self):
+        daten = {
+            "sheet_id": self.sheet_counter,
+            "section": random.randint(100, 999),
+            "cell": random.randint(100, 999),
+            "period": random.randint(1, 3),
+            "sorting_out_deactivated": random.choice([0, 1]),
+            "handling_code": random.randint(0, 4),
+            "recommendation_code": f"{random.randint(10, 99)}|{random.randint(10, 99)}",
+            "intervention_code": f"{random.randint(10, 99)}",
+            "cathode_counter": random.randint(1, 63),
+            "weight": random.randint(100, 999),
+            "copper_not_released": random.choice([0, 1]),
+            "buds_north": random.randint(0, 999),
+            "buds_south": random.randint(0, 999),
+            "stack_number_north": random.randint(0, 4),
+            "stack_number_south": random.randint(0, 4),
+            "stack_quality_north": random.randint(0, 4),
+            "stack_quality_south": random.randint(0, 4),
+            "limit_bud_size": random.randint(100, 999),
+            "bud_size_ne": random.randint(0, 999),
+            "bud_size_nw": random.randint(0, 999),
+            "bud_size_sw": random.randint(0, 999),
+            "bud_size_se": random.randint(0, 999),
+            "deflection": random.randint(0, 999),
+            "limit_deflection": random.randint(100, 999),
+            "suggestion_ecu": random.randint(0, 9)
+        }
+        
+        self.sheet_counter += 1
+        return "|".join(str(value) for value in daten.values())
 
     async def run(self):
         try:
@@ -90,7 +101,14 @@ class KathodenmaschinenSimulator:
 
 async def main():
     simulator = KathodenmaschinenSimulator()
-    await simulator.run()
+    try:
+        await simulator.run()
+    except KeyboardInterrupt:
+        print("\nSimulator wird beendet...")
+    except Exception as e:
+        print(f"Unerwarteter Fehler: {e}")
+    finally:
+        await simulator.cleanup()
 
 if __name__ == "__main__":
     try:

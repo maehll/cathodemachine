@@ -1,13 +1,14 @@
-from asyncua import Client
+from asyncua import Client, ua
 import asyncio
 from datetime import datetime
 
 class KathodenmaschinenClient:
     def __init__(self, url="opc.tcp://localhost:4840/freeopcua/server/"):
         self.url = url
-        self.client = Client(url=self.url)
+        self.client = None
         self.daten_node = None
         self.gui = None
+        self.connected = False
         
         # Schwellwerte als Dictionary definieren
         self.schwellwerte = {
@@ -22,28 +23,41 @@ class KathodenmaschinenClient:
         }
 
     async def connect(self):
-        await self.client.connect()
-        print(f"Verbunden mit Server unter {self.url}")
-        
-        # Node-ID für die Maschinendaten finden
-        uri = "http://kathodenmaschine.simulation"
-        idx = await self.client.get_namespace_index(uri)
-        
-        # Zugriff auf die Daten-Node
-        objects = self.client.nodes.objects
-        kathodenmaschine = await objects.get_child([f"{idx}:Kathodenmaschine"])
-        self.daten_node = await kathodenmaschine.get_child([f"{idx}:Maschinendaten"])
-        
-        if not self.daten_node:
-            raise Exception("Daten-Node nicht gefunden")
+        try:
+            if self.client:
+                await self.client.disconnect()
+                
+            self.client = Client(url=self.url)
+            await self.client.connect()
+            
+            # Node-ID für die Maschinendaten finden
+            uri = "http://kathodenmaschine.simulation"
+            idx = await self.client.get_namespace_index(uri)
+            
+            # Zugriff auf die Daten-Node
+            objects = self.client.nodes.objects
+            kathodenmaschine = await objects.get_child([f"{idx}:Kathodenmaschine"])
+            self.daten_node = await kathodenmaschine.get_child([f"{idx}:Maschinendaten"])
+            
+            if not self.daten_node:
+                raise Exception("Daten-Node nicht gefunden")
+                
+            self.connected = True
+            print(f"Verbunden mit Server unter {self.url}")
+            
+        except Exception as e:
+            print(f"Verbindungsfehler: {e}")
+            self.connected = False
+            if self.client:
+                await self.client.disconnect()
+            self.client = None
+            self.daten_node = None
 
     async def update(self):
-        if not self.daten_node:
-            print("Keine Verbindung zum Server - versuche neu zu verbinden...")
-            try:
-                await self.connect()
-            except Exception as e:
-                print(f"Neuverbindung fehlgeschlagen: {e}")
+        if not self.connected:
+            await self.connect()
+            if not self.connected:
+                await asyncio.sleep(1)
                 return
 
         try:
@@ -70,7 +84,19 @@ class KathodenmaschinenClient:
                             
         except Exception as e:
             print(f"Fehler beim Lesen der Daten: {e}")
+            self.connected = False
+            if self.client:
+                await self.client.disconnect()
+            self.client = None
             self.daten_node = None
+            await asyncio.sleep(1)
+
+    async def disconnect(self):
+        if self.client:
+            await self.client.disconnect()
+        self.client = None
+        self.daten_node = None
+        self.connected = False
 
     def parse_daten(self, daten_string):
         werte = daten_string.split("|")
